@@ -2,11 +2,17 @@ import cv2
 import mediapipe as mp
 import math
 import time
+import tkinter as tk
+from tkinter import messagebox
+from threading import Thread
 
 mp_face_mesh = mp.solutions.face_mesh
 facemesh = mp_face_mesh.FaceMesh(
     min_detection_confidence=0.5, min_tracking_confidence=0.5, refine_landmarks=True
 )
+
+# Global variable to control resetting the process
+stop_inference = False
 
 
 def calculate_left_eye_height(face_landmarks, inter_pupillary_distance):
@@ -14,7 +20,6 @@ def calculate_left_eye_height(face_landmarks, inter_pupillary_distance):
     left_eye_bottom = face_landmarks.landmark[145]
     left_eye_height = abs(left_eye_top.y - left_eye_bottom.y)
     normalized_left_eye_height = left_eye_height / inter_pupillary_distance
-
     return normalized_left_eye_height
 
 
@@ -29,7 +34,6 @@ def calculate_mouth_metrics(face_landmarks, inter_pupillary_distance):
 
     normalized_width_mouth = dist_width / inter_pupillary_distance
     normalized_height_mouth = dist_height / inter_pupillary_distance
-
     return normalized_width_mouth, normalized_height_mouth
 
 
@@ -39,29 +43,23 @@ def calculate_cheek_metrics(face_landmarks, inter_pupillary_distance):
     dist_cheek = math.sqrt(
         (left_cheek.x - right_cheek.x) ** 2 + (left_cheek.y - right_cheek.y) ** 2
     )
-
     normalized_cheek_distance = dist_cheek / inter_pupillary_distance
-
     return normalized_cheek_distance
 
 
 def calculate_eyebrow_metrics(face_landmarks, inter_pupillary_distance):
     left_eyebrow_inner = face_landmarks.landmark[55]
     right_eyebrow_inner = face_landmarks.landmark[285]
-
     eyebrow_inner_distance = math.sqrt(
         (left_eyebrow_inner.x - right_eyebrow_inner.x) ** 2
         + (left_eyebrow_inner.y - right_eyebrow_inner.y) ** 2
     )
-
     normalized_eyebrow_eye_dist = eyebrow_inner_distance / inter_pupillary_distance
-
     return normalized_eyebrow_eye_dist
 
 
-# Since everyone's facial metrics are different, this function is designed to calculate and establish neutral facial metrics for each individual.
-# This will be our baseline facial dimensions
 def calibration(duration=10):
+    global stop_inference
     cap = cv2.VideoCapture(0)
     neutral_widths = []
     neutral_heights = []
@@ -70,7 +68,7 @@ def calibration(duration=10):
     neutral_eye_heights = []
     start_time = time.time()
 
-    while cap.isOpened():
+    while cap.isOpened() and not stop_inference:
         ret, frame = cap.read()
         if not ret or time.time() - start_time > duration:
             break
@@ -124,6 +122,9 @@ def calibration(duration=10):
     cap.release()
     cv2.destroyAllWindows()
 
+    if stop_inference:  # Check if reset was triggered
+        return None, None, None, None, None
+
     return (
         sum(neutral_widths) / len(neutral_widths),
         sum(neutral_heights) / len(neutral_heights),
@@ -133,18 +134,13 @@ def calibration(duration=10):
     )
 
 
-def inference():
-    (
-        neutral_width,
-        neutral_height,
-        neutral_cheek,
-        neutral_eyebrows,
-        neutral_eye_height,
-    ) = calibration(10)
-
+def inference(
+    neutral_width, neutral_height, neutral_cheek, neutral_eyebrows, neutral_eye_height
+):
+    global stop_inference
     cap = cv2.VideoCapture(0)
 
-    while cap.isOpened():
+    while cap.isOpened() and not stop_inference:
         ret, frame = cap.read()
         if not ret:
             break
@@ -210,5 +206,56 @@ def inference():
     cv2.destroyAllWindows()
 
 
+def run_inference():
+    global stop_inference
+    stop_inference = False  # Reset the stop flag
+
+    (
+        neutral_width,
+        neutral_height,
+        neutral_cheek,
+        neutral_eyebrows,
+        neutral_eye_height,
+    ) = calibration(10)
+    if neutral_width is not None:  # If calibration was not interrupted
+        inference(
+            neutral_width,
+            neutral_height,
+            neutral_cheek,
+            neutral_eyebrows,
+            neutral_eye_height,
+        )
+
+
+def start_inference_thread():
+    thread = Thread(target=run_inference)
+    thread.start()
+
+
+def reset_inference():
+    global stop_inference
+    stop_inference = True  # Stop the current inference process
+    messagebox.showinfo("Reset", "Program is resetting...")
+    start_inference_thread()  # Restart the inference process from scratch
+
+
+# GUI Setup
+def create_gui():
+    window = tk.Tk()
+    window.title("Facial Expression Detection")
+
+    reset_button = tk.Button(
+        window,
+        text="Reset",
+        command=reset_inference,
+        font=("Helvetica", 16),
+        width=20,
+        height=3,
+    )
+    reset_button.pack(pady=50)
+
+    window.mainloop()
+
+
 if __name__ == "__main__":
-    inference()
+    create_gui()
