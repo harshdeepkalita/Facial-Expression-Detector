@@ -1,6 +1,6 @@
 # Tech Summit Robot
 
-### Emotion based robot -  your mood lifter :)  - multilingual  !!
+### Emotion based robot -  your mood lifter :)  
 
 **Pipeline 1.0** = *Face detection (object detection model)* -> classifier(a CNN or ViT) OR MediaPipe -> target classes : happy, sad, angry, fear.
 
