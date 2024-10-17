@@ -93,7 +93,7 @@ def calculate_eyebrow_metrics(face_landmarks, inter_pupillary_distance):
 
 # Since everyone's facial metrics are different, this function is designed to calculate and establish neutral facial metrics for each individual.
 # This will be our baseline facial dimensions
-def calibration(duration=10):
+def calibration(duration=2):
     cap = cv2.VideoCapture(0)
     neutral_widths = []
     neutral_heights = []
@@ -144,11 +144,11 @@ def calibration(duration=10):
 
 # Initialize the counter and threshold for sad expression detection
 sad_counter = 0
-sad_threshold = 30  # Number of frames the condition must be true to confirm "Sad" (adjustable)
+sad_threshold = 20  
 
 def inference():
     global sad_counter  # Use the global counter for tracking sad frames
-    neutral_width, neutral_height, neutral_cheek, neutral_eyebrows, neutral_eye_height = calibration(10)
+    neutral_width, neutral_height, neutral_cheek, neutral_eyebrows, neutral_eye_height = calibration(2)
 
     cap = cv2.VideoCapture(0)
 
@@ -174,6 +174,7 @@ def inference():
 
             # Draw metrics on the face
             frame = draw_face_metrics(frame, face_landmarks)
+            expression = "Neutral"
 
             if normalized_width_mouth > neutral_width * 1.1 and normalized_cheek_distance > neutral_cheek * 1.02:
                 expression = "Smile"
@@ -181,18 +182,18 @@ def inference():
             elif normalized_height_mouth > neutral_height * 1.7 and normalized_eye_height > neutral_eye_height * 1.03:
                 expression = "Surprise"
                 sad_counter = 0  # Reset the sad counter
-            elif normalized_eye_height < neutral_eye_height * 0.98:
+            elif normalized_eye_height < neutral_eye_height * 0.999999:
                 # Increment the sad counter when the sad condition is met
                 sad_counter += 1
                 if sad_counter > sad_threshold:
-                    expression = "Sad"
+                    expression = "Sad "
             else:
                 expression = "Neutral"
                 sad_counter = 0  # Reset the sad counter
 
             # Display the expression on the frame
             img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-            cv2.putText(frame, f'Expression: {expression}', (30, 150), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+            cv2.putText(frame, f'Expression: {expression}', (30, 150), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 255), 3)
             cv2.imshow('Mouth Expression Inference', frame)
 
             if cv2.waitKey(1) & 0xFF == ord('q'):
