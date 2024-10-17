@@ -2,17 +2,14 @@ import cv2
 import mediapipe as mp
 import math
 import time
+import threading
 import tkinter as tk
 from tkinter import messagebox
-from threading import Thread
 
 mp_face_mesh = mp.solutions.face_mesh
 facemesh = mp_face_mesh.FaceMesh(
     min_detection_confidence=0.5, min_tracking_confidence=0.5, refine_landmarks=True
 )
-
-# Global variable to control resetting the process
-stop_inference = False
 
 
 def calculate_left_eye_height(face_landmarks, inter_pupillary_distance):
@@ -48,8 +45,9 @@ def calculate_cheek_metrics(face_landmarks, inter_pupillary_distance):
 
 
 def calculate_eyebrow_metrics(face_landmarks, inter_pupillary_distance):
-    left_eyebrow_inner = face_landmarks.landmark[55]
-    right_eyebrow_inner = face_landmarks.landmark[285]
+    left_eyebrow_inner = face_landmarks.landmark[107]
+    right_eyebrow_inner = face_landmarks.landmark[336]
+
     eyebrow_inner_distance = math.sqrt(
         (left_eyebrow_inner.x - right_eyebrow_inner.x) ** 2
         + (left_eyebrow_inner.y - right_eyebrow_inner.y) ** 2
@@ -58,9 +56,8 @@ def calculate_eyebrow_metrics(face_landmarks, inter_pupillary_distance):
     return normalized_eyebrow_eye_dist
 
 
-def calibration(duration=10):
-    global stop_inference
-    cap = cv2.VideoCapture(1)
+def calibration(duration=2):
+    cap = cv2.VideoCapture(0)
     neutral_widths = []
     neutral_heights = []
     neutral_cheeks = []
@@ -68,7 +65,7 @@ def calibration(duration=10):
     neutral_eye_heights = []
     start_time = time.time()
 
-    while cap.isOpened() and not stop_inference:
+    while cap.isOpened():
         ret, frame = cap.read()
         if not ret or time.time() - start_time > duration:
             break
@@ -122,9 +119,6 @@ def calibration(duration=10):
     cap.release()
     cv2.destroyAllWindows()
 
-    if stop_inference:  # Check if reset was triggered
-        return None, None, None, None, None
-
     return (
         sum(neutral_widths) / len(neutral_widths),
         sum(neutral_heights) / len(neutral_heights),
@@ -134,13 +128,26 @@ def calibration(duration=10):
     )
 
 
-def inference(
-    neutral_width, neutral_height, neutral_cheek, neutral_eyebrows, neutral_eye_height
-):
-    global stop_inference
-    cap = cv2.VideoCapture(1)
+sad_counter = 0
+sad_threshold = 20
+running = False
 
-    while cap.isOpened() and not stop_inference:
+
+def inference():
+    global sad_counter, running
+    running = True
+
+    (
+        neutral_width,
+        neutral_height,
+        neutral_cheek,
+        neutral_eyebrows,
+        neutral_eye_height,
+    ) = calibration(2)
+
+    cap = cv2.VideoCapture(0)
+
+    while cap.isOpened() and running:
         ret, frame = cap.read()
         if not ret:
             break
@@ -163,39 +170,41 @@ def inference(
             normalized_cheek_distance = calculate_cheek_metrics(
                 face_landmarks, inter_pupillary_distance
             )
-            normalized_eyebrows = calculate_eyebrow_metrics(
-                face_landmarks, inter_pupillary_distance
-            )
             normalized_eye_height = calculate_left_eye_height(
                 face_landmarks, inter_pupillary_distance
             )
+
+            expression = "Neutral"
 
             if (
                 normalized_width_mouth > neutral_width * 1.1
                 and normalized_cheek_distance > neutral_cheek * 1.02
             ):
                 expression = "Smile"
+                sad_counter = 0
             elif (
                 normalized_height_mouth > neutral_height * 1.7
                 and normalized_eye_height > neutral_eye_height * 1.03
             ):
                 expression = "Surprise"
-            elif (
-                normalized_eyebrows < neutral_eyebrows * 0.98
-            ):  # Slight decrease in eyebrow distance to detect sadness
-                expression = "Sad"
+                sad_counter = 0
+            elif normalized_eye_height < neutral_eye_height * 0.98:
+                sad_counter += 1
+                if sad_counter > sad_threshold:
+                    expression = "Sad"
             else:
                 expression = "Neutral"
+                sad_counter = 0
 
             img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
             cv2.putText(
                 frame,
                 f"Expression: {expression}",
-                (30, 150),
+                (10, 50),  # Moved closer to the top left
                 cv2.FONT_HERSHEY_SIMPLEX,
-                1,
-                (0, 255, 0),
-                2,
+                1.5,  # Reduced font size
+                (0, 0, 255),
+                2,  # Reduced thickness
             )
             cv2.imshow("Mouth Expression Inference", frame)
 
@@ -206,56 +215,35 @@ def inference(
     cv2.destroyAllWindows()
 
 
-def run_inference():
-    global stop_inference
-    stop_inference = False  # Reset the stop flag
-
-    (
-        neutral_width,
-        neutral_height,
-        neutral_cheek,
-        neutral_eyebrows,
-        neutral_eye_height,
-    ) = calibration(10)
-    if neutral_width is not None:  # If calibration was not interrupted
-        inference(
-            neutral_width,
-            neutral_height,
-            neutral_cheek,
-            neutral_eyebrows,
-            neutral_eye_height,
-        )
+def start_inference():
+    global running
+    if not running:
+        threading.Thread(target=inference).start()
 
 
-def start_inference_thread():
-    thread = Thread(target=run_inference)
-    thread.start()
+def reset_program():
+    global running, sad_counter
+    running = False
+    sad_counter = 0
+    messagebox.showinfo("Reset", "The program has been reset.")
 
 
-def reset_inference():
-    global stop_inference
-    stop_inference = True  # Stop the current inference process
-    messagebox.showinfo("Reset", "Program is resetting...")
-    start_inference_thread()  # Restart the inference process from scratch
+# Tkinter GUI setup
+root = tk.Tk()
+root.title("Facial Expression Detector")
 
+# Create a label to display text
+label = tk.Label(
+    root, font=3, text=" Didn't get much time to make the GUI look pretty NGL :("
+)
+label.pack(pady=10)
 
-# GUI Setup
-def create_gui():
-    window = tk.Tk()
-    window.title("Facial Expression Detection")
+start_button = tk.Button(
+    root, text="Start Inference", width=10, height=5, command=start_inference
+)
+start_button.pack(pady=10)
 
-    reset_button = tk.Button(
-        window,
-        text="Reset",
-        command=reset_inference,
-        font=("Helvetica", 16),
-        width=20,
-        height=3,
-    )
-    reset_button.pack(pady=50)
+reset_button = tk.Button(root, text="Reset", width=10, height=5, command=reset_program)
+reset_button.pack(pady=10)
 
-    window.mainloop()
-
-
-if __name__ == "__main__":
-    create_gui()
+root.mainloop()
