@@ -147,7 +147,7 @@ sad_counter = 0
 sad_threshold = 20  
 
 def inference():
-    global sad_counter  # Use the global counter for tracking sad frames
+    global sad_counter  
     neutral_width, neutral_height, neutral_cheek, neutral_eyebrows, neutral_eye_height = calibration(2)
 
     cap = cv2.VideoCapture(0)
@@ -182,7 +182,7 @@ def inference():
             elif normalized_height_mouth > neutral_height * 1.7 and normalized_eye_height > neutral_eye_height * 1.03:
                 expression = "Surprise"
                 sad_counter = 0  # Reset the sad counter
-            elif normalized_eye_height < neutral_eye_height * 0.999999:
+            elif normalized_eye_height < neutral_eye_height * 0.98:
                 # Increment the sad counter when the sad condition is met
                 sad_counter += 1
                 if sad_counter > sad_threshold:
