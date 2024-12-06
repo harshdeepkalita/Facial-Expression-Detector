@@ -6,4 +6,10 @@
 
 **Pipeline 2.0** = Classes -> robot sensors -> response according to the target classes
 
-**Pipeline 3.0 (optional)** = Detects the t-shirt logos and then uses OCR and then tells some facts about it. 
+
+
+
+
+## Used By
+
+- [KCL Research In EEE](https://github.com/KCL-RIE/Techsummit-2024)
